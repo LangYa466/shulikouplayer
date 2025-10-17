@@ -33,6 +33,8 @@ export default function App() {
   const [playlist, setPlaylist] = useLocalStorage('slks-playlist', [])
   const [currentIndex, setCurrentIndex] = useLocalStorage('slks-current-index', 0)
   const [loopList, setLoopList] = useLocalStorage('slks-loop', true)
+  // 添加缓存：存储已解析的 URL -> 解析结果
+  const [parseCache, setParseCache] = useLocalStorage('slks-parse-cache', {})
   const [inputUrl, setInputUrl] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
@@ -67,10 +69,25 @@ export default function App() {
     }
     setAdding(true)
     try {
-      const result = await parseBilibili(url)
-      if (result.code !== 200) {
-        throw new Error(result.msg || '解析失败')
+      let result
+
+      // 检查缓存中是否已有该 URL 的解析结果
+      if (parseCache[url]) {
+        console.log('使用缓存的解析结果:', url)
+        result = parseCache[url]
+      } else {
+        console.log('请求 API 解析:', url)
+        result = await parseBilibili(url)
+        if (result.code !== 200) {
+          throw new Error(result.msg || '解析失败')
+        }
+        // 将解析结果存入缓存
+        setParseCache(prev => ({
+          ...prev,
+          [url]: result
+        }))
       }
+
       const dataArray = Array.isArray(result.data) ? result.data : []
       if (!dataArray.length) throw new Error('未获取到视频地址')
       const best = dataArray[0]
