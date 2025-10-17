@@ -38,10 +38,43 @@ export default function App() {
   const [inputUrl, setInputUrl] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
+  const [shareMessage, setShareMessage] = useState('')
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  // 页面加载时检查 URL 中的分享数据
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const sharedData = params.get('share')
+      if (sharedData) {
+        // 解码：先 Base64 解码，再 URL 解码（处理中文）
+        const decoded = JSON.parse(decodeURIComponent(atob(sharedData)))
+        if (Array.isArray(decoded) && decoded.length > 0) {
+          // 合并到现有播放列表，避免重复
+          setPlaylist(prev => {
+            const existingUrls = new Set(prev.map(p => p.sourceUrl))
+            const newItems = decoded.filter(item => !existingUrls.has(item.sourceUrl))
+            if (newItems.length > 0) {
+              setShareMessage(`成功导入 ${newItems.length} 个视频！`)
+              setTimeout(() => setShareMessage(''), 3000)
+              return [...prev, ...newItems]
+            } else {
+              setShareMessage('这些视频已在列表中')
+              setTimeout(() => setShareMessage(''), 3000)
+              return prev
+            }
+          })
+          // 清除 URL 参数
+          window.history.replaceState({}, '', window.location.pathname)
+        }
+      }
+    } catch (e) {
+      console.error('导入分享歌单失败:', e)
+    }
+  }, [])
 
   const currentItem = playlist[currentIndex] || null
   const nextItem = useMemo(() => {
@@ -196,6 +229,68 @@ export default function App() {
     }
   }
 
+  // 分享歌单功能
+  function handleSharePlaylist() {
+    if (playlist.length === 0) {
+      setError('播放列表为空，无法分享')
+      setTimeout(() => setError(''), 2000)
+      return
+    }
+
+    try {
+      // 将播放列表转为 JSON，然后 URL 编码后再 Base64 编码（处理中文）
+      const jsonStr = JSON.stringify(playlist)
+      const encoded = btoa(encodeURIComponent(jsonStr))
+      const shareUrl = `${window.location.origin}${window.location.pathname}?share=${encoded}`
+
+      // 复制到剪贴板
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          setShareMessage('分享链接已复制到剪贴板！')
+          setTimeout(() => setShareMessage(''), 3000)
+        }).catch(() => {
+          // 降级方案
+          fallbackCopyToClipboard(shareUrl)
+        })
+      } else {
+        fallbackCopyToClipboard(shareUrl)
+      }
+    } catch (e) {
+      setError('生成分享链接失败')
+      setTimeout(() => setError(''), 2000)
+      console.error('分享失败:', e)
+    }
+  }
+
+  // 降级复制方案
+  function fallbackCopyToClipboard(text) {
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    textArea.style.position = 'fixed'
+    textArea.style.left = '-999999px'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    try {
+      document.execCommand('copy')
+      setShareMessage('分享链接已复制到剪贴板！')
+      setTimeout(() => setShareMessage(''), 3000)
+    } catch (err) {
+      setShareMessage('请手动复制：' + text)
+      setTimeout(() => setShareMessage(''), 5000)
+    }
+    document.body.removeChild(textArea)
+  }
+
+  // 清空播放列表
+  function handleClearPlaylist() {
+    if (playlist.length === 0) return
+    if (confirm('确定要清空播放列表吗？')) {
+      setPlaylist([])
+      setCurrentIndex(0)
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -230,6 +325,7 @@ export default function App() {
         </button>
       </section>
       {error && <div className="error" role="alert">{error}</div>}
+      {shareMessage && <div className="success" role="alert">{shareMessage}</div>}
 
       <main className="main">
         <div className="player-panel">
@@ -243,6 +339,27 @@ export default function App() {
           />
         </div>
         <aside className="list-panel">
+          <div className="list-header">
+            <h3>播放列表 ({playlist.length})</h3>
+            <div className="list-actions">
+              <button
+                className="share-btn"
+                onClick={handleSharePlaylist}
+                disabled={playlist.length === 0}
+                title="分享歌单"
+              >
+                📤 分享
+              </button>
+              <button
+                className="clear-btn"
+                onClick={handleClearPlaylist}
+                disabled={playlist.length === 0}
+                title="清空列表"
+              >
+                🗑️ 清空
+              </button>
+            </div>
+          </div>
           <Playlist
             items={playlist}
             currentIndex={currentIndex}
