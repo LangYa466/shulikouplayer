@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useLocalStorage } from '../hooks/useLocalStorage.js'
 
 export default function Player({ item, nextItem, onEnded, onPrev, onNext }) {
   const videoRef = useRef(null)
   const preloaderRef = useRef(null)
-  const [muted, setMuted] = useState(true)
+  const [muted, setMuted] = useLocalStorage('slks-muted', false)
   const [error, setError] = useState('')
 
   // Load current video
@@ -79,4 +80,3 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext }) {
     </div>
   )
 }
-
