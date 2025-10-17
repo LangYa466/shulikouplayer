@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import Playlist from './components/Playlist.jsx'
 import Player from './components/Player.jsx'
+import TutorialModal from './components/TutorialModal.jsx'
 import { parseBilibili } from './lib/api.js'
 import { useLocalStorage } from './hooks/useLocalStorage.js'
 
@@ -50,10 +51,24 @@ export default function App() {
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
   const [shareMessage, setShareMessage] = useState('')
+  // 教程弹窗状态
+  const [showTutorial, setShowTutorial] = useState(false)
+  const [dontShowTutorial, setDontShowTutorial] = useLocalStorage('slks-dont-show-tutorial', false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  // 首次访问时显示教程弹窗
+  useEffect(() => {
+    if (!dontShowTutorial) {
+      // 延迟显示，让页面先加载完成
+      const timer = setTimeout(() => {
+        setShowTutorial(true)
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [dontShowTutorial])
 
   // 页面加载时检查 URL 中的分享数据
   useEffect(() => {
@@ -368,8 +383,27 @@ export default function App() {
     }
   }
 
+  // 处理教程弹窗关闭
+  function handleCloseTutorial() {
+    setShowTutorial(false)
+  }
+
+  // 处理"不再提醒"
+  function handleDontShowAgain() {
+    setDontShowTutorial(true)
+    setShowTutorial(false)
+  }
+
   return (
     <div className="app">
+      {/* 教程弹窗 */}
+      {showTutorial && (
+        <TutorialModal
+          onClose={handleCloseTutorial}
+          onDontShowAgain={handleDontShowAgain}
+        />
+      )}
+
       <header className="app-header">
         <div className="brand">
           <span className="logo">术</span>
