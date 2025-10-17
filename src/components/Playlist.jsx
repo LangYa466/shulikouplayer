@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 
 function formatDuration(sec, fallback = '') {
   if (!sec || isNaN(sec)) return fallback
@@ -8,7 +8,39 @@ function formatDuration(sec, fallback = '') {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`
 }
 
-export default function Playlist({ items, currentIndex, onPlay, onRemove }) {
+export default function Playlist({ items, currentIndex, onPlay, onRemove, onCoverError }) {
+  // 记录哪些封面已经尝试重新加载过（避免无限重试）
+  const [retryingCovers, setRetryingCovers] = useState(new Set())
+  // 记录哪些封面已经尝试过 HTTP -> HTTPS 转换
+  const [triedHttpsUpgrade, setTriedHttpsUpgrade] = useState(new Set())
+
+  const handleImageError = (e, itemId, currentCover) => {
+    // 如果当前是 HTTP 封面，且还没尝试过升级到 HTTPS
+    if (currentCover && currentCover.startsWith('http://') && !triedHttpsUpgrade.has(itemId)) {
+      console.log('尝试将 HTTP 封面升级为 HTTPS:', itemId)
+      setTriedHttpsUpgrade(prev => new Set(prev).add(itemId))
+
+      // 直接修改 img 的 src 为 HTTPS
+      const httpsUrl = currentCover.replace('http://', 'https://')
+      e.target.src = httpsUrl
+      return
+    }
+
+    // 如果已经重试过，就不再重试
+    if (retryingCovers.has(itemId)) {
+      console.log('封面已重试过，不再尝试:', itemId)
+      return
+    }
+
+    // 标记为正在重试
+    setRetryingCovers(prev => new Set(prev).add(itemId))
+
+    // 调用父组件的错误处理函数
+    if (onCoverError) {
+      onCoverError(itemId)
+    }
+  }
+
   if (!items.length) {
     return <div className="empty">列表为空，粘贴 B 站链接添加视频吧～</div>
   }
@@ -18,7 +50,12 @@ export default function Playlist({ items, currentIndex, onPlay, onRemove }) {
         <li key={it.id} className={idx === currentIndex ? 'active' : ''}>
           <button className="thumb" onClick={() => onPlay(idx)}>
             {it.cover ? (
-              <img src={it.cover} alt={it.title} loading="lazy" />
+              <img
+                src={it.cover}
+                alt={it.title}
+                loading="lazy"
+                onError={(e) => handleImageError(e, it.id, it.cover)}
+              />
             ) : (
               <div className="placeholder" />
             )}
@@ -39,4 +76,3 @@ export default function Playlist({ items, currentIndex, onPlay, onRemove }) {
     </ul>
   )
 }
-

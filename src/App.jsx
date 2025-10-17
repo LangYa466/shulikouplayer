@@ -209,6 +209,44 @@ export default function App() {
     }
   }
 
+  // 处理封面加载失败，重新从API获取
+  async function handleCoverError(itemId) {
+    const item = playlist.find(p => p.id === itemId)
+    if (!item || !item.sourceUrl) return
+
+    console.log('封面加载失败，重新从API获取:', item.sourceUrl)
+
+    try {
+      // 强制从API重新获取，不使用缓存
+      const result = await parseBilibili(item.sourceUrl)
+      if (result.code !== 200) {
+        console.error('重新获取封面失败:', result.msg)
+        return
+      }
+
+      // 更新缓存
+      setParseCache(prev => ({
+        ...prev,
+        [item.sourceUrl]: result
+      }))
+
+      // 更新播放列表中的封面
+      setPlaylist(prev => prev.map(p => {
+        if (p.id === itemId && result.imgurl) {
+          return {
+            ...p,
+            cover: result.imgurl,
+          }
+        }
+        return p
+      }))
+
+      console.log('封面已更新:', result.imgurl)
+    } catch (e) {
+      console.error('重新获取封面失败:', e)
+    }
+  }
+
   async function handleAdd() {
     setError('')
     const rawInput = inputUrl.trim()
@@ -476,6 +514,7 @@ export default function App() {
             currentIndex={currentIndex}
             onPlay={playAt}
             onRemove={handleRemove}
+            onCoverError={handleCoverError}
           />
         </aside>
       </main>
