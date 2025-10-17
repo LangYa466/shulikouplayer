@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage.js'
+import { getProxiedImageUrl } from '../lib/imageProxy.js'
 
 export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVideoError }) {
   const videoRef = useRef(null)
@@ -91,7 +92,7 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
         preload="auto"
         onEnded={onEnded}
         onError={handleVideoError}
-        poster={item.cover || undefined}
+        poster={getProxiedImageUrl(item.cover)}
         src={item.videoUrl || undefined}
       />
       {error && <div className="error" role="alert">{error}</div>}
