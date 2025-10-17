@@ -207,6 +207,14 @@ export default function App() {
             >
                 狼牙
             </a>
+            <a
+                href="https://github.com/LangYa466/shulikouplayer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+                源代码仓库
+            </a>
             <br />
             本项目仅供学习交流使用，请勿用于商业用途。如有侵权请联系删除。
         </small>
