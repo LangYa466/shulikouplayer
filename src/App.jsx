@@ -224,6 +224,7 @@ export default function App() {
             >
                 狼牙
             </a>
+            {" | "}
             <a
                 href="https://github.com/LangYa466/shulikouplayer"
                 target="_blank"
