@@ -14,6 +14,17 @@ function isBiliUrl(url) {
   }
 }
 
+// Extract BV number from Bilibili URL
+function extractBvId(url) {
+  const match = url.match(/BV[a-zA-Z0-9]+/)
+  return match ? match[0] : null
+}
+
+// Reconstruct Bilibili URL from BV number
+function reconstructBiliUrl(bvId) {
+  return `https://www.bilibili.com/video/${bvId}`
+}
+
 // Extract Bilibili URL from text (supports format like: 【Title】 https://...)
 function extractBiliUrl(text) {
   // Match bilibili.com or b23.tv URLs
@@ -46,34 +57,85 @@ export default function App() {
 
   // 页面加载时检查 URL 中的分享数据
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      const sharedData = params.get('share')
-      if (sharedData) {
-        // 解码：先 Base64 解码，再 URL 解码（处理中文）
-        const decoded = JSON.parse(decodeURIComponent(atob(sharedData)))
-        if (Array.isArray(decoded) && decoded.length > 0) {
-          // 合并到现有播放列表，避免重复
-          setPlaylist(prev => {
-            const existingUrls = new Set(prev.map(p => p.sourceUrl))
-            const newItems = decoded.filter(item => !existingUrls.has(item.sourceUrl))
-            if (newItems.length > 0) {
-              setShareMessage(`成功导入 ${newItems.length} 个视频！`)
-              setTimeout(() => setShareMessage(''), 3000)
-              return [...prev, ...newItems]
-            } else {
+    const importSharedPlaylist = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search)
+        const sharedData = params.get('share')
+        if (sharedData) {
+          // 解码：先 Base64 解码，再 URL 解码，最后 JSON 解析
+          const decoded = atob(sharedData)
+          const urls = JSON.parse(decodeURIComponent(decoded))
+          if (Array.isArray(urls) && urls.length > 0) {
+            // 清除 URL 参数
+            window.history.replaceState({}, '', window.location.pathname)
+
+            // 过滤掉已存在的 URL
+            const existingUrls = new Set(playlist.map(p => p.sourceUrl))
+            const newUrls = urls.filter(url => !existingUrls.has(url))
+
+            if (newUrls.length === 0) {
               setShareMessage('这些视频已在列表中')
               setTimeout(() => setShareMessage(''), 3000)
-              return prev
+              return
             }
-          })
-          // 清除 URL 参数
-          window.history.replaceState({}, '', window.location.pathname)
+
+            // 批量解析视频
+            let successCount = 0
+            for (const url of newUrls) {
+              try {
+                let result
+                if (parseCache[url]) {
+                  result = parseCache[url]
+                } else {
+                  result = await parseBilibili(url)
+                  if (result.code === 200) {
+                    setParseCache(prev => ({ ...prev, [url]: result }))
+                  }
+                }
+
+                if (result.code === 200) {
+                  const dataArray = Array.isArray(result.data) ? result.data : []
+                  if (dataArray.length > 0) {
+                    const best = dataArray[0]
+                    const item = {
+                      id: genId(),
+                      sourceUrl: url,
+                      title: best.title || result.title || '未命名视频',
+                      author: result.user?.name || '',
+                      cover: result.imgurl || '',
+                      duration: best.duration || 0,
+                      durationFormat: best.durationFormat || '',
+                      videoUrl: best.video_url,
+                      addedAt: Date.now(),
+                    }
+                    if (item.videoUrl) {
+                      setPlaylist(prev => [...prev, item])
+                      successCount++
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error('解析视频失败:', url, err)
+              }
+            }
+
+            if (successCount > 0) {
+              setShareMessage(`成功导入 ${successCount} 个视频！`)
+              setTimeout(() => setShareMessage(''), 3000)
+            } else {
+              setError('导入失败，请稍后重试')
+              setTimeout(() => setError(''), 3000)
+            }
+          }
         }
+      } catch (e) {
+        console.error('导入分享歌单失败:', e)
+        setError('导入分享歌单失败')
+        setTimeout(() => setError(''), 3000)
       }
-    } catch (e) {
-      console.error('导入分享歌单失败:', e)
     }
+
+    importSharedPlaylist()
   }, [])
 
   const currentItem = playlist[currentIndex] || null
@@ -238,22 +300,35 @@ export default function App() {
     }
 
     try {
-      // 将播放列表转为 JSON，然后 URL 编码后再 Base64 编码（处理中文）
-      const jsonStr = JSON.stringify(playlist)
-      const encoded = btoa(encodeURIComponent(jsonStr))
+      // 只提取 BV 号，极大缩短链接长度
+      const bvIds = playlist
+        .map(item => extractBvId(item.sourceUrl))
+        .filter(bvId => bvId !== null)
+
+      if (bvIds.length === 0) {
+        setError('无法提取视频 BV 号')
+        setTimeout(() => setError(''), 2000)
+        return
+      }
+
+      const jsonStr = JSON.stringify(bvIds)
+      const encoded = btoa(jsonStr)
       const shareUrl = `${window.location.origin}${window.location.pathname}?share=${encoded}`
+
+      // 添加分享文案
+      const shareText = `[我分享了我的术力口歌单] ${shareUrl}`
 
       // 复制到剪贴板
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(shareUrl).then(() => {
+        navigator.clipboard.writeText(shareText).then(() => {
           setShareMessage('分享链接已复制到剪贴板！')
           setTimeout(() => setShareMessage(''), 3000)
         }).catch(() => {
           // 降级方案
-          fallbackCopyToClipboard(shareUrl)
+          fallbackCopyToClipboard(shareText)
         })
       } else {
-        fallbackCopyToClipboard(shareUrl)
+        fallbackCopyToClipboard(shareText)
       }
     } catch (e) {
       setError('生成分享链接失败')
