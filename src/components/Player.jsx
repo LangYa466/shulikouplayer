@@ -1,30 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage.js'
 
-export default function Player({ item, nextItem, onEnded, onPrev, onNext }) {
+export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVideoError }) {
   const videoRef = useRef(null)
   const preloaderRef = useRef(null)
   const [muted, setMuted] = useLocalStorage('slks-muted', false)
   const [error, setError] = useState('')
+  const [isRetrying, setIsRetrying] = useState(false)
 
   // Load current video
   useEffect(() => {
     setError('')
+    setIsRetrying(false)
     const v = videoRef.current
     if (!v) return
     if (!item?.videoUrl) return
     v.src = item.videoUrl
-    // Autoplay: muted to satisfy autoplay policies
+    // 不自动静音
     v.muted = muted
-    v.play().catch(() => {
+    v.play().catch((err) => {
       // Autoplay might be blocked; show message
+      console.log('Autoplay blocked:', err)
     })
     return () => {
       v.pause()
       v.removeAttribute('src')
       v.load()
     }
-  }, [item?.videoUrl])
+  }, [item?.videoUrl, muted])
 
   // Keep mute state in sync
   useEffect(() => {
@@ -46,6 +49,24 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext }) {
     }
   }, [nextItem?.videoUrl])
 
+  // 处理视频播放错误
+  const handleVideoError = async () => {
+    if (isRetrying || !item || !onVideoError) return
+
+    setIsRetrying(true)
+    setError('视频播放失败，正在重新获取...')
+
+    try {
+      // 通知父组件重新获取视频URL
+      await onVideoError(item)
+      setError('')
+    } catch (err) {
+      setError('重新获取失败，链接可能已失效')
+    } finally {
+      setIsRetrying(false)
+    }
+  }
+
   if (!item) {
     return <div className="player-empty">尚未选择视频</div>
   }
@@ -55,9 +76,9 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext }) {
       <div className="player-header">
         <div className="title" title={item.title}>{item.title}</div>
         <div className="controls">
-          <button onClick={onPrev}>&laquo; 上一条</button>
+          <button onClick={onPrev} disabled={isRetrying}>&laquo; 上一条</button>
           <button onClick={() => setMuted(m => !m)}>{muted ? '🔇 取消静音' : '🔊 静音'}</button>
-          <button onClick={onNext}>下一条 &raquo;</button>
+          <button onClick={onNext} disabled={isRetrying}>下一条 &raquo;</button>
         </div>
       </div>
 
@@ -69,7 +90,7 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext }) {
         playsInline
         preload="auto"
         onEnded={onEnded}
-        onError={() => setError('播放失败，可能链接失效或受限')}
+        onError={handleVideoError}
         poster={item.cover || undefined}
         src={item.videoUrl || undefined}
       />

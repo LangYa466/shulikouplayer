@@ -50,6 +50,53 @@ export default function App() {
     return playlist[nextIdx]
   }, [playlist, currentIndex])
 
+  // 处理视频播放失败，重新从API获取
+  async function handleVideoError(item) {
+    if (!item || !item.sourceUrl) return
+
+    console.log('视频播放失败，重新从API获取:', item.sourceUrl)
+
+    try {
+      // 强制从API重新获取，不使用缓存
+      const result = await parseBilibili(item.sourceUrl)
+      if (result.code !== 200) {
+        throw new Error(result.msg || '解析失败')
+      }
+
+      const dataArray = Array.isArray(result.data) ? result.data : []
+      if (!dataArray.length) throw new Error('未获取到视频地址')
+      const best = dataArray[0]
+
+      if (!best.video_url) throw new Error('接口未返回可播放链接')
+
+      // 更新缓存
+      setParseCache(prev => ({
+        ...prev,
+        [item.sourceUrl]: result
+      }))
+
+      // 更新播放列表中的该项
+      setPlaylist(prev => prev.map(p => {
+        if (p.id === item.id) {
+          return {
+            ...p,
+            videoUrl: best.video_url,
+            title: best.title || result.title || p.title,
+            cover: result.imgurl || p.cover,
+            duration: best.duration || p.duration,
+            durationFormat: best.durationFormat || p.durationFormat,
+          }
+        }
+        return p
+      }))
+
+      console.log('视频URL已更新')
+    } catch (e) {
+      console.error('重新获取视频失败:', e)
+      throw e
+    }
+  }
+
   async function handleAdd() {
     setError('')
     const rawInput = inputUrl.trim()
@@ -192,6 +239,7 @@ export default function App() {
             onEnded={playNext}
             onPrev={playPrev}
             onNext={playNext}
+            onVideoError={handleVideoError}
           />
         </div>
         <aside className="list-panel">
