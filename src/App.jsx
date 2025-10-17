@@ -62,12 +62,14 @@ export default function App() {
         const params = new URLSearchParams(window.location.search)
         const sharedData = params.get('share')
         if (sharedData) {
-          // 解码：先 Base64 解码，再 URL 解码，最后 JSON 解析
-          const decoded = atob(sharedData)
-          const urls = JSON.parse(decodeURIComponent(decoded))
-          if (Array.isArray(urls) && urls.length > 0) {
+          // 解码：只包含 BV 号数组
+          const bvIds = JSON.parse(atob(sharedData))
+          if (Array.isArray(bvIds) && bvIds.length > 0) {
             // 清除 URL 参数
             window.history.replaceState({}, '', window.location.pathname)
+
+            // 将 BV 号转换为完整 URL
+            const urls = bvIds.map(bvId => reconstructBiliUrl(bvId))
 
             // 过滤掉已存在的 URL
             const existingUrls = new Set(playlist.map(p => p.sourceUrl))
