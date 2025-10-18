@@ -1,15 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage.js'
 import { getProxiedImageUrl } from '../lib/imageProxy.js'
 
-export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVideoError }) {
+const Player = forwardRef(({ item, nextItem, onEnded, onPrev, onNext, onVideoError, autoPlay, defaultVolume, loopSingle }, ref) => {
   const videoRef = useRef(null)
   const preloaderRef = useRef(null)
-  const [muted, setMuted] = useLocalStorage('slks-muted', false)
+  const [volume, setVolume] = useLocalStorage('slks-volume', defaultVolume || 70)
   const [error, setError] = useState('')
   const [isRetrying, setIsRetrying] = useState(false)
   const retryCountRef = useRef(0)
   const currentItemIdRef = useRef(null)
+
+  // 暴露 pause 方法给父组件
+  useImperativeHandle(ref, () => ({
+    pause: () => {
+      if (videoRef.current) {
+        videoRef.current.pause()
+      }
+    }
+  }))
 
   // Load current video
   useEffect(() => {
@@ -24,23 +33,36 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
     if (!v) return
     if (!item?.videoUrl) return
     v.src = item.videoUrl
-    // 不自动静音
-    v.muted = muted
-    v.play().catch((err) => {
-      // Autoplay might be blocked; show message
-      console.log('Autoplay blocked:', err)
-    })
+    // 应用音量设置
+    v.volume = volume / 100
+
+    // 只有在 autoPlay 为 true 时才自动播放
+    if (autoPlay) {
+      v.play().catch((err) => {
+        console.log('自动播放被阻止:', err)
+      })
+    }
+
     return () => {
       v.pause()
       v.removeAttribute('src')
       v.load()
     }
-  }, [item?.videoUrl, item?.id, muted])
+  }, [item?.videoUrl, item?.id, autoPlay])
 
-  // Keep mute state in sync
+  // 同步音量
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = muted
-  }, [muted])
+    if (videoRef.current) {
+      videoRef.current.volume = volume / 100
+    }
+  }, [volume])
+
+  // 同步默认音量设置
+  useEffect(() => {
+    if (defaultVolume !== undefined && defaultVolume !== volume) {
+      setVolume(defaultVolume)
+    }
+  }, [defaultVolume])
 
   // Preload next video via hidden video element
   useEffect(() => {
@@ -49,7 +71,6 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
     if (nextItem?.videoUrl) {
       hidden.preload = 'auto'
       hidden.src = nextItem.videoUrl
-      // Attempt to prime the buffer
       hidden.load()
     } else {
       hidden.removeAttribute('src')
@@ -76,16 +97,12 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
     setError(`视频播放失败，正在重新获取... (${retryCountRef.current}/${MAX_RETRIES})`)
 
     try {
-      // 通知父组件重新获取视频URL
       await onVideoError(item)
       setError('')
-      // 成功后重置计数器
       retryCountRef.current = 0
     } catch (err) {
-      // 如果还能重试，继续
       if (retryCountRef.current < MAX_RETRIES) {
         setError(`重新获取失败，准备第 ${retryCountRef.current + 1} 次重试...`)
-        // 延迟后自动重试
         setTimeout(() => {
           handleVideoError()
         }, 1000)
@@ -99,6 +116,14 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
     }
   }
 
+  const handleVolumeChange = (e) => {
+    const newVolume = Number(e.target.value);
+    setVolume(newVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume / 100;
+    }
+  };
+
   if (!item) {
     return <div className="player-empty">尚未选择视频</div>
   }
@@ -108,9 +133,8 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
       <div className="player-header">
         <div className="title" title={item.title}>{item.title}</div>
         <div className="controls">
-          <button onClick={onPrev} disabled={isRetrying}>&laquo; 上一条</button>
-          <button onClick={() => setMuted(m => !m)}>{muted ? '🔇 取消静音' : '🔊 静音'}</button>
-          <button onClick={onNext} disabled={isRetrying}>下一条 &raquo;</button>
+          <button onClick={onPrev} disabled={isRetrying}>&laquo; 上一曲</button>
+          <button onClick={onNext} disabled={isRetrying}>下一曲 &raquo;</button>
         </div>
       </div>
 
@@ -118,18 +142,40 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
         ref={videoRef}
         className="video"
         controls
-        autoPlay
+        autoPlay={autoPlay}
         playsInline
         preload="auto"
-        onEnded={onEnded}
+        loop={loopSingle}
+        onEnded={loopSingle ? undefined : onEnded}
         onError={handleVideoError}
         poster={getProxiedImageUrl(item.cover)}
         src={item.videoUrl || undefined}
       />
+
+      <div className="player-controls">
+        <div className="volume-control">
+          <span className="volume-icon">🔊</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={volume}
+            onChange={handleVolumeChange}
+            className="volume-slider"
+            title={`音量: ${volume}%`}
+          />
+          <span className="volume-value">{volume}%</span>
+        </div>
+      </div>
+
       {error && <div className="error" role="alert">{error}</div>}
 
       {/* Hidden preloader */}
       <video ref={preloaderRef} style={{ display: 'none' }} muted />
     </div>
   )
-}
+})
+
+Player.displayName = 'Player'
+
+export default Player

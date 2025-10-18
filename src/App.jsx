@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import ThemeToggle from './components/ThemeToggle.jsx'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
+import SettingsPanel from './components/SettingsPanel.jsx'
 import Playlist from './components/Playlist.jsx'
 import Player from './components/Player.jsx'
 import TutorialModal from './components/TutorialModal.jsx'
@@ -45,6 +45,9 @@ export default function App() {
   const [playlist, setPlaylist] = useLocalStorage('slks-playlist', [])
   const [currentIndex, setCurrentIndex] = useLocalStorage('slks-current-index', 0)
   const [loopList, setLoopList] = useLocalStorage('slks-loop', true)
+  const [loopSingle, setLoopSingle] = useLocalStorage('slks-loop-single', false)
+  const [autoPlay, setAutoPlay] = useLocalStorage('slks-auto-play', false)
+  const [defaultVolume, setDefaultVolume] = useLocalStorage('slks-default-volume', 70)
   // 添加缓存：存储已解析的 URL -> 解析结果
   const [parseCache, setParseCache] = useLocalStorage('slks-parse-cache', {})
   const [inputUrl, setInputUrl] = useState('')
@@ -54,6 +57,8 @@ export default function App() {
   // 教程弹窗状态
   const [showTutorial, setShowTutorial] = useState(false)
   const [dontShowTutorial, setDontShowTutorial] = useLocalStorage('slks-dont-show-tutorial', false)
+
+  const playerRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -432,6 +437,13 @@ export default function App() {
     setShowTutorial(false)
   }
 
+  // 处理定时暂停
+  function handlePauseForSleep() {
+    if (playerRef.current) {
+      playerRef.current.pause()
+    }
+  }
+
   return (
     <div className="app">
       {/* 教程弹窗 */}
@@ -451,11 +463,19 @@ export default function App() {
           </div>
         </div>
         <div className="actions">
-          <label className="loop">
-            <input type="checkbox" checked={loopList} onChange={e => setLoopList(e.target.checked)} />
-            循环播放列表
-          </label>
-          <ThemeToggle theme={theme} setTheme={setTheme} />
+          <SettingsPanel
+            theme={theme}
+            setTheme={setTheme}
+            loopList={loopList}
+            setLoopList={setLoopList}
+            loopSingle={loopSingle}
+            setLoopSingle={setLoopSingle}
+            autoPlay={autoPlay}
+            setAutoPlay={setAutoPlay}
+            defaultVolume={defaultVolume}
+            setDefaultVolume={setDefaultVolume}
+            onPauseForSleep={handlePauseForSleep}
+          />
         </div>
       </header>
 
@@ -479,12 +499,16 @@ export default function App() {
       <main className="main">
         <div className="player-panel">
           <Player
+            ref={playerRef}
             item={currentItem}
             nextItem={nextItem}
-            onEnded={playNext}
+            onEnded={loopSingle ? null : playNext}
             onPrev={playPrev}
             onNext={playNext}
             onVideoError={handleVideoError}
+            autoPlay={autoPlay}
+            defaultVolume={defaultVolume}
+            loopSingle={loopSingle}
           />
         </div>
         <aside className="list-panel">
@@ -519,39 +543,18 @@ export default function App() {
         </aside>
       </main>
 
-    <footer className="w-full bg-gray-900 text-gray-400 text-center py-6 mt-10 border-t border-gray-800">
-        <small className="text-sm leading-relaxed block">
-            接口来源：
-            <a
-                href="https://api.mir6.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 transition-colors"
-            >
-                米人API
-            </a>
-            {" | "}作者：
-            <a
-                href="https://furry.luxe"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 transition-colors"
-            >
-                狼牙
-            </a>
-            {" | "}
-            <a
-                href="https://github.com/LangYa466/shulikouplayer"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 transition-colors"
-            >
-                源代码仓库
-            </a>
-            <br />
-            本项目仅供学习交流使用，请勿用于商业用途。如有侵权请联系删除。
+      <footer className="footer">
+        <small>
+          接口来源：
+          <a href="https://api.mir6.com" target="_blank" rel="noopener noreferrer">米人API</a>
+          {" | "}作者：
+          <a href="https://furry.luxe" target="_blank" rel="noopener noreferrer">狼牙</a>
+          {" | "}
+          <a href="https://github.com/LangYa466/shulikouplayer" target="_blank" rel="noopener noreferrer">源代码仓库</a>
+          <br />
+          本项目仅供学习交流使用，请勿用于商业用途。如有侵权请联系删除。
         </small>
-    </footer>
+      </footer>
     </div>
   )
 }
