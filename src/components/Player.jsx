@@ -8,11 +8,18 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
   const [muted, setMuted] = useLocalStorage('slks-muted', false)
   const [error, setError] = useState('')
   const [isRetrying, setIsRetrying] = useState(false)
+  const retryCountRef = useRef(0)
+  const currentItemIdRef = useRef(null)
 
   // Load current video
   useEffect(() => {
     setError('')
     setIsRetrying(false)
+    // 切换到新视频时，重置重试计数器
+    if (currentItemIdRef.current !== item?.id) {
+      retryCountRef.current = 0
+      currentItemIdRef.current = item?.id
+    }
     const v = videoRef.current
     if (!v) return
     if (!item?.videoUrl) return
@@ -28,7 +35,7 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
       v.removeAttribute('src')
       v.load()
     }
-  }, [item?.videoUrl, muted])
+  }, [item?.videoUrl, item?.id, muted])
 
   // Keep mute state in sync
   useEffect(() => {
@@ -50,21 +57,45 @@ export default function Player({ item, nextItem, onEnded, onPrev, onNext, onVide
     }
   }, [nextItem?.videoUrl])
 
-  // 处理视频播放错误
+  // 处理视频播放错误 - 最多重试3次
   const handleVideoError = async () => {
     if (isRetrying || !item || !onVideoError) return
 
+    const MAX_RETRIES = 3
+    retryCountRef.current += 1
+
+    console.log(`视频播放失败，第 ${retryCountRef.current}/${MAX_RETRIES} 次重试...`)
+
+    if (retryCountRef.current > MAX_RETRIES) {
+      setError('重新获取失败，链接可能已失效（已重试3次）')
+      setIsRetrying(false)
+      return
+    }
+
     setIsRetrying(true)
-    setError('视频播放失败，正在重新获取...')
+    setError(`视频播放失败，正在重新获取... (${retryCountRef.current}/${MAX_RETRIES})`)
 
     try {
       // 通知父组件重新获取视频URL
       await onVideoError(item)
       setError('')
+      // 成功后重置计数器
+      retryCountRef.current = 0
     } catch (err) {
-      setError('重新获取失败，链接可能已失效')
+      // 如果还能重试，继续
+      if (retryCountRef.current < MAX_RETRIES) {
+        setError(`重新获取失败，准备第 ${retryCountRef.current + 1} 次重试...`)
+        // 延迟后自动重试
+        setTimeout(() => {
+          handleVideoError()
+        }, 1000)
+      } else {
+        setError('重新获取失败，链接可能已失效（已重试3次）')
+      }
     } finally {
-      setIsRetrying(false)
+      if (retryCountRef.current >= MAX_RETRIES) {
+        setIsRetrying(false)
+      }
     }
   }
 
